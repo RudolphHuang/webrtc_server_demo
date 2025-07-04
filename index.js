@@ -201,6 +201,7 @@ app.get('/offer/:callId', (req, res) => {
     if (calls[callId] && calls[callId].offer) {
         res.json({
             offer: calls[callId].offer,
+            answer: calls[callId].answer,
             callerCandidates: calls[callId].callerCandidates || [],
             answerCandidates: calls[callId].answerCandidates || []
         });
