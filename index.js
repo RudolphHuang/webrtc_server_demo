@@ -61,14 +61,14 @@ function handleJoin(ws, msg, clientAddr) {
         log(`[推送] offer 推送给 callee`);
     }
     // 推送之前缓存的 candidate
-    if (calls[callId].callerCandidates) {
-        for (const candidate of calls[callId].callerCandidates) {
-            ws.send(JSON.stringify({type: 'candidate', callId, candidate}));
-            log(`[推送] 缓存 candidate 推送给 callee, callId=${callId}`);
-        }
+    // if (calls[callId].callerCandidates) {
+    //     for (const candidate of calls[callId].callerCandidates) {
+    //         ws.send(JSON.stringify({type: 'candidate', callId, candidate}));
+    //         log(`[推送] 缓存 candidate 推送给 callee, callId=${callId}`);
+    //     }
         // 清空缓存
-        calls[callId].callerCandidates = [];
-    }
+        // calls[callId].callerCandidates = [];
+    // }
     // 通知 caller 有人加入
     if (calls[callId].caller) {
         log(`[通知] 通知 caller 有人加入房间`);
@@ -99,11 +99,12 @@ function handleCandidate(ws, msg, clientAddr) {
 
     // Caller 发送 candidate
     if (ws.callRole === 'caller') {
+        calls[callId].callerCandidates.push(candidate);
+        log(`[缓存] candidate 缓存到 callerCandidates, callId=${callId}`);
         if (!calls[callId].callee) {
             // callee 还没 join，缓存
-            if (!calls[callId].callerCandidates) calls[callId].callerCandidates = [];
-            calls[callId].callerCandidates.push(candidate);
-            log(`[缓存] candidate 缓存到 callerCandidates, callId=${callId}`);
+            // if (!calls[callId].callerCandidates) calls[callId].callerCandidates = [];
+
         } else {
             // callee 已 join，直接转发
             calls[callId].callee.send(JSON.stringify({type: 'candidate', callId, candidate}));
