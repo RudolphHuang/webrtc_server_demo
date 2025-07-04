@@ -1,6 +1,11 @@
+const express = require('express');
+const cors = require('cors');
+const app = express();
+app.use(cors());
+const httpServer = require('http').createServer(app);
 const WebSocket = require('ws');
 
-const wss = new WebSocket.Server({port: 3000});
+const wss = new WebSocket.Server({server: httpServer});
 
 // 维护每个 callId 的 caller 和 callee 连接
 const calls = {};
@@ -20,6 +25,7 @@ function handleOffer(ws, msg, clientAddr) {
     calls[callId].caller = ws;
     calls[callId].offer = offer; // 保存 offer 以便 callee join 时转发
     calls[callId].callerCandidates = [];
+    calls[callId].answerCandidates = [];
     ws.callRole = 'caller';
     ws.callId = callId;
     log(`[房间] Caller 加入房间 ${callId}`);
@@ -185,4 +191,22 @@ wss.on('connection', (ws, req) => {
     });
 });
 
-log('WebRTC signaling server running on ws://localhost:3000');
+// 提供根据 callId 获取 offer 的 HTTP 接口
+app.get('/offer/:callId', (req, res) => {
+    const {callId} = req.params;
+    if (calls[callId] && calls[callId].offer) {
+        res.json({
+            offer: calls[callId].offer,
+            callerCandidates: calls[callId].callerCandidates || [],
+            answerCandidates: calls[callId].answerCandidates || []
+        });
+    } else {
+        res.status(404).json({error: 'Offer not found'});
+    }
+});
+
+// 启动 HTTP+WebSocket 服务
+const PORT = 3000;
+httpServer.listen(PORT, () => {
+    log(`WebRTC signaling server (HTTP+WS) running on http://localhost:${PORT}`);
+});
