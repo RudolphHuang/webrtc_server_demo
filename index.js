@@ -10,21 +10,24 @@ function log(...args) {
 }
 
 function handleOffer(ws, msg, clientAddr) {
-  const { callId } = msg;
-  if (calls[callId] && calls[callId].caller) {
-    ws.send(JSON.stringify({ type: 'error', error: 'Room already exists' }));
-    log(`[错误] offer 房间已存在: ${callId}`);
-    return;
-  }
-  if (!calls[callId]) calls[callId] = {};
-  calls[callId].caller = ws;
-  ws.callRole = 'caller';
-  ws.callId = callId;
-  log(`[房间] Caller 加入房间 ${callId}`);
-  if (calls[callId].callee) {
-    log(`[转发] offer 转发给 callee`);
-    calls[callId].callee.send(JSON.stringify(msg));
-  }
+    const { callId, offer } = msg;
+    if (calls[callId] && calls[callId].caller) {
+      ws.send(JSON.stringify({ type: 'error', error: 'Room already exists' }));
+      log(`[错误] offer 房间已存在: ${callId}`);
+      return;
+    }
+    if (!calls[callId]) calls[callId] = {};
+    calls[callId].caller = ws;
+    calls[callId].offer = offer; // 保存 offer 以便 callee join 时转发
+    ws.callRole = 'caller';
+    ws.callId = callId;
+    log(`[房间] Caller 加入房间 ${callId}`);
+    // 通知 caller offer 成功
+    ws.send(JSON.stringify({ type: 'offer-success', callId }));
+    if (calls[callId].callee) {
+      log(`[转发] offer 转发给 callee`);
+      calls[callId].callee.send(JSON.stringify({ type: 'offer', callId, offer }));
+    }
 }
 
 function handleJoin(ws, msg, clientAddr) {
