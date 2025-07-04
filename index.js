@@ -9,6 +9,90 @@ function log(...args) {
   console.log(new Date().toISOString(), ...args);
 }
 
+function handleOffer(ws, msg, clientAddr) {
+  const { callId } = msg;
+  if (calls[callId] && calls[callId].caller) {
+    ws.send(JSON.stringify({ type: 'error', error: 'Room already exists' }));
+    log(`[错误] offer 房间已存在: ${callId}`);
+    return;
+  }
+  if (!calls[callId]) calls[callId] = {};
+  calls[callId].caller = ws;
+  ws.callRole = 'caller';
+  ws.callId = callId;
+  log(`[房间] Caller 加入房间 ${callId}`);
+  if (calls[callId].callee) {
+    log(`[转发] offer 转发给 callee`);
+    calls[callId].callee.send(JSON.stringify(msg));
+  }
+}
+
+function handleJoin(ws, msg, clientAddr) {
+  const { callId } = msg;
+  if (!calls[callId] || !calls[callId].caller) {
+    ws.send(JSON.stringify({ type: 'error', error: 'Room does not exist' }));
+    log(`[错误] join 房间不存在: ${callId}`);
+    return;
+  }
+  if (calls[callId].callee) {
+    ws.send(JSON.stringify({ type: 'error', error: 'Room is full' }));
+    log(`[错误] join 房间已满: ${callId}`);
+    return;
+  }
+  calls[callId].callee = ws;
+  ws.callRole = 'callee';
+  ws.callId = callId;
+  log(`[房间] Callee 加入房间 ${callId}`);
+    // 1. 通知 callee join 成功
+   ws.send(JSON.stringify({ type: 'join-success', callId }));
+   // 2. 通知 caller 有人加入
+   if (calls[callId].caller) {
+     log(`[通知] 通知 caller 有人加入房间`);
+     calls[callId].caller.send(JSON.stringify({ type: 'peer-joined' }));
+   }
+}
+
+function handleAnswer(ws, msg, clientAddr) {
+    const { callId } = msg;
+    if (calls[callId]?.caller) {
+      log(`[转发] answer 转发给 caller`);
+      calls[callId].caller.send(JSON.stringify(msg));
+      // 回复 callee answer-success
+      ws.send(JSON.stringify({ type: 'answer-success', callId }));
+    } else {
+      ws.send(JSON.stringify({ type: 'error', error: 'Caller not found' }));
+      log(`[错误] answer 转发失败，caller 不存在: ${callId}`);
+    }
+}
+
+function handleCandidate(ws, msg, clientAddr) {
+  const { callId } = msg;
+  const target =
+    ws.callRole === 'caller'
+      ? calls[callId]?.callee
+      : calls[callId]?.caller;
+  if (target) {
+    log(`[转发] candidate 转发给 ${ws.callRole === 'caller' ? 'callee' : 'caller'}`);
+    target.send(JSON.stringify(msg));
+  } else {
+    log(`[警告] candidate 目标不存在`);
+  }
+}
+
+function handleHangup(ws, msg, clientAddr) {
+  const { callId } = msg;
+  const target =
+    ws.callRole === 'caller'
+      ? calls[callId]?.callee
+      : calls[callId]?.caller;
+  if (target) {
+    log(`[通知] hangup 通知对方`);
+    target.send(JSON.stringify({ type: 'hangup' }));
+  }
+  log(`[房间] 房间 ${callId} 被销毁`);
+  delete calls[callId];
+}
+
 wss.on('connection', (ws, req) => {
   const clientAddr = req.socket.remoteAddress + ':' + req.socket.remotePort;
   log(`[连接] 新客户端 ${clientAddr} 已连接`);
@@ -25,81 +109,29 @@ wss.on('connection', (ws, req) => {
 
     log(`[消息] 来自${clientAddr}:`, msg);
 
-    const { type, callId } = msg;
-
-    if (type === 'offer') {
-      if (calls[callId] && calls[callId].caller) {
-        // 房间已存在，不能重复创建
-        ws.send(JSON.stringify({ type: 'error', error: 'Room already exists' }));
-        log(`[错误] offer 房间已存在: ${callId}`);
-        return;
-      }
-      if (!calls[callId]) calls[callId] = {};
-      calls[callId].caller = ws;
-      ws.callRole = 'caller';
-      ws.callId = callId;
-      log(`[房间] Caller 加入房间 ${callId}`);
-      // offer 也要转发给 callee（如果已存在）
-      if (calls[callId].callee) {
-        log(`[转发] offer 转发给 callee`);
-        calls[callId].callee.send(JSON.stringify(msg));
-      }
-    } else if (type === 'join') {
-      if (!calls[callId] || !calls[callId].caller) {
-        // 房间不存在
-        ws.send(JSON.stringify({ type: 'error', error: 'Room does not exist' }));
-        log(`[错误] join 房间不存在: ${callId}`);
-        return;
-      }
-      if (calls[callId].callee) {
-        // 房间已满
-        ws.send(JSON.stringify({ type: 'error', error: 'Room is full' }));
-        log(`[错误] join 房间已满: ${callId}`);
-        return;
-      }
-      calls[callId].callee = ws;
-      ws.callRole = 'callee';
-      ws.callId = callId;
-      log(`[房间] Callee 加入房间 ${callId}`);
-      // 通知 caller 有人加入
-      if (calls[callId].caller) {
-        log(`[通知] 通知 caller 有人加入房间`);
-        calls[callId].caller.send(JSON.stringify({ type: 'peer-joined' }));
-      }
-    } else if (type === 'answer' && calls[callId]?.caller) {
-      log(`[转发] answer 转发给 caller`);
-      // 转发 answer 给 caller
-      calls[callId].caller.send(JSON.stringify(msg));
-    } else if (type === 'candidate') {
-      // ICE candidate 转发
-      const target =
-        ws.callRole === 'caller'
-          ? calls[callId]?.callee
-          : calls[callId]?.caller;
-      if (target) {
-        log(`[转发] candidate 转发给 ${ws.callRole === 'caller' ? 'callee' : 'caller'}`);
-        target.send(JSON.stringify(msg));
-      } else {
-        log(`[警告] candidate 目标不存在`);
-      }
-    } else if (type === 'hangup') {
-      // 通知对方挂断
-      const target =
-        ws.callRole === 'caller'
-          ? calls[callId]?.callee
-          : calls[callId]?.caller;
-      if (target) {
-        log(`[通知] hangup 通知对方`);
-        target.send(JSON.stringify({ type: 'hangup' }));
-      }
-      log(`[房间] 房间 ${callId} 被销毁`);
-      // 清理
-      delete calls[callId];
+    switch (msg.type) {
+      case 'offer':
+        handleOffer(ws, msg, clientAddr);
+        break;
+      case 'join':
+        handleJoin(ws, msg, clientAddr);
+        break;
+      case 'answer':
+        handleAnswer(ws, msg, clientAddr);
+        break;
+      case 'candidate':
+        handleCandidate(ws, msg, clientAddr);
+        break;
+      case 'hangup':
+        handleHangup(ws, msg, clientAddr);
+        break;
+      default:
+        ws.send(JSON.stringify({ type: 'error', error: 'Unknown message type' }));
+        log(`[错误] 未知消息类型: ${msg.type}`);
     }
   });
 
   ws.on('close', () => {
-    // 清理 calls
     if (ws.callId && calls[ws.callId]) {
       const target =
         ws.callRole === 'caller'
