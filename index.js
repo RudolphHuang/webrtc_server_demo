@@ -23,6 +23,7 @@ function handleOffer(ws, msg, clientAddr) {
     }
     if (!calls[callId]) calls[callId] = {};
     calls[callId].caller = ws;
+    calls[callId].answer = null;
     calls[callId].offer = offer; // 保存 offer 以便 callee join 时转发
     calls[callId].callerCandidates = [];
     calls[callId].answerCandidates = [];
@@ -66,8 +67,8 @@ function handleJoin(ws, msg, clientAddr) {
     //         ws.send(JSON.stringify({type: 'candidate', callId, candidate}));
     //         log(`[推送] 缓存 candidate 推送给 callee, callId=${callId}`);
     //     }
-        // 清空缓存
-        // calls[callId].callerCandidates = [];
+    // 清空缓存
+    // calls[callId].callerCandidates = [];
     // }
     // 通知 caller 有人加入
     if (calls[callId].caller) {
@@ -77,8 +78,9 @@ function handleJoin(ws, msg, clientAddr) {
 }
 
 function handleAnswer(ws, msg, clientAddr) {
-    const {callId} = msg;
+    const {callId, answer} = msg;
     if (calls[callId]?.caller) {
+        calls[callId].answer = answer;
         log(`[转发] answer 转发给 caller`);
         calls[callId].caller.send(JSON.stringify(msg));
         // 回复 callee answer-success
