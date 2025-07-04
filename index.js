@@ -31,29 +31,34 @@ function handleOffer(ws, msg, clientAddr) {
 }
 
 function handleJoin(ws, msg, clientAddr) {
-  const { callId } = msg;
-  if (!calls[callId] || !calls[callId].caller) {
-    ws.send(JSON.stringify({ type: 'error', error: 'Room does not exist' }));
-    log(`[错误] join 房间不存在: ${callId}`);
-    return;
-  }
-  if (calls[callId].callee) {
-    ws.send(JSON.stringify({ type: 'error', error: 'Room is full' }));
-    log(`[错误] join 房间已满: ${callId}`);
-    return;
-  }
-  calls[callId].callee = ws;
-  ws.callRole = 'callee';
-  ws.callId = callId;
-  log(`[房间] Callee 加入房间 ${callId}`);
+    const { callId } = msg;
+    if (!calls[callId] || !calls[callId].caller) {
+      ws.send(JSON.stringify({ type: 'error', error: 'Room does not exist' }));
+      log(`[错误] join 房间不存在: ${callId}`);
+      return;
+    }
+    if (calls[callId].callee) {
+      ws.send(JSON.stringify({ type: 'error', error: 'Room is full' }));
+      log(`[错误] join 房间已满: ${callId}`);
+      return;
+    }
+    calls[callId].callee = ws;
+    ws.callRole = 'callee';
+    ws.callId = callId;
+    log(`[房间] Callee 加入房间 ${callId}`);
     // 1. 通知 callee join 成功
-   ws.send(JSON.stringify({ type: 'join-success', callId }));
-   // 2. 通知 caller 有人加入
-   if (calls[callId].caller) {
-     log(`[通知] 通知 caller 有人加入房间`);
-     calls[callId].caller.send(JSON.stringify({ type: 'peer-joined' }));
-   }
-}
+    ws.send(JSON.stringify({ type: 'join-success', callId }));
+    // 2. 立即推送 offer 给 callee
+    if (calls[callId].offer) {
+      ws.send(JSON.stringify({ type: 'offer', callId, offer: calls[callId].offer }));
+      log(`[推送] offer 推送给 callee`);
+    }
+    // 3. 通知 caller 有人加入
+    if (calls[callId].caller) {
+      log(`[通知] 通知 caller 有人加入房间`);
+      calls[callId].caller.send(JSON.stringify({ type: 'peer-joined' }));
+    }
+  }
 
 function handleAnswer(ws, msg, clientAddr) {
     const { callId } = msg;
