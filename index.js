@@ -112,6 +112,7 @@ function handleCandidate(ws, msg, clientAddr) {
     }
     // Callee 发送 candidate
     else if (ws.callRole === 'callee') {
+        calls[callId].answerCandidates.push(candidate);
         if (calls[callId].caller) {
             calls[callId].caller.send(JSON.stringify({type: 'candidate', callId, candidate}));
             log(`[转发] candidate 从 callee 转发给 caller, callId=${callId}`);
